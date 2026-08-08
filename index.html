@@ -371,6 +371,21 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="bragModal">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="marquee" style="font-size:16px;">Brag to Group</div>
+      <button id="closeBragModal">Close</button>
+    </div>
+    <div class="group-checks" id="bragGroupsList"></div>
+    <div id="bragError" class="error-text"></div>
+    <div class="form-actions">
+      <button class="cancel-btn" id="cancelBrag">Cancel</button>
+      <button class="save-btn" id="confirmBrag">Share</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API_BASE = 'https://the-cage-backend.onrender.com';
 
@@ -702,6 +717,7 @@ function renderList() {
           ${s.notes ? `<div class="ticket-notes">${escapeHtml(s.notes)}</div>` : ''}
           ${s.photo_url ? `<img class="ticket-photo" src="${escapeHtml(s.photo_url)}" onclick="window.open('${escapeHtml(s.photo_url)}', '_blank')">` : ''}
           <button class="share-card-btn" onclick="shareCard('${s.id}')">Share card</button>
+          ${myGroups.length > 0 ? `<button class="share-card-btn" onclick="openBragModal('${s.id}')">🎉 Brag to Group</button>` : ''}
           <button class="del-x" onclick="deleteSession('${s.id}')">Remove ticket</button>
         </div>
       `;
@@ -1046,59 +1062,128 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
 }
 
-function drawShareCard(session) {
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function drawCoverImage(ctx, img, x, y, w, h) {
+  const imgRatio = img.width / img.height;
+  const boxRatio = w / h;
+  let sx, sy, sw, sh;
+  if (imgRatio > boxRatio) {
+    sh = img.height; sw = sh * boxRatio; sx = (img.width - sw) / 2; sy = 0;
+  } else {
+    sw = img.width; sh = sw / boxRatio; sx = 0; sy = (img.height - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+async function drawShareCard(session) {
   const canvas = document.getElementById('shareCanvas');
   const ctx = canvas.getContext('2d');
   const net = Number(session.cashout) - Number(session.buyin);
   const isWin = net >= 0;
+  const hasPhoto = !!session.photo_url;
 
   const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
   grad.addColorStop(0, '#E3F3E6');
   grad.addColorStop(1, '#F1FAF2');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = 'center';
 
   ctx.fillStyle = '#96741A';
-  ctx.font = '600 20px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('THE CAGE', canvas.width / 2, 70);
-
-  ctx.fillStyle = '#5B7362';
-  ctx.font = '14px monospace';
-  ctx.fillText(fmtDate(session.played_date).toUpperCase(), canvas.width / 2, 100);
+  ctx.font = '600 18px monospace';
+  ctx.fillText('THE CAGE', canvas.width / 2, 40);
 
   ctx.fillStyle = '#16261A';
-  ctx.font = '600 30px Georgia, serif';
-  wrapText(ctx, session.casino, canvas.width / 2, 180, 500, 36);
+  ctx.font = '600 26px Georgia, serif';
+  wrapText(ctx, session.casino, canvas.width / 2, hasPhoto ? 75 : 180, 500, 32);
+
+  let afterPhotoY = hasPhoto ? 105 : 240;
+
+  if (hasPhoto) {
+    try {
+      const img = await loadImage(session.photo_url);
+      const boxX = 40, boxY = 105, boxW = 520, boxH = 300;
+      drawCoverImage(ctx, img, boxX, boxY, boxW, boxH);
+      ctx.strokeStyle = '#C4E0C9';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+      afterPhotoY = boxY + boxH + 40;
+    } catch (e) {
+      afterPhotoY = 240; // photo failed to load — fall back to text-only layout
+    }
+  }
 
   ctx.fillStyle = '#5B7362';
-  ctx.font = '20px sans-serif';
-  ctx.fillText(session.game || 'Slot session', canvas.width / 2, 240);
+  ctx.font = '18px sans-serif';
+  ctx.fillText(session.game || 'Slot session', canvas.width / 2, afterPhotoY);
 
-  ctx.strokeStyle = '#C4E0C9';
-  ctx.beginPath();
-  ctx.moveTo(80, 300);
-  ctx.lineTo(canvas.width - 80, 300);
-  ctx.stroke();
+  const dateY = afterPhotoY + 25;
+  ctx.font = '13px monospace';
+  ctx.fillText(fmtDate(session.played_date).toUpperCase(), canvas.width / 2, dateY);
 
+  const netY = dateY + 90;
   ctx.fillStyle = isWin ? '#1B6B45' : '#C41E56';
-  ctx.font = '700 90px monospace';
-  ctx.fillText((net >= 0 ? '+' : '-') + '$' + Math.abs(net).toFixed(0), canvas.width / 2, 430);
+  ctx.font = '700 80px monospace';
+  ctx.fillText((net >= 0 ? '+' : '-') + '$' + Math.abs(net).toFixed(0), canvas.width / 2, netY);
 
+  const figY = netY + 45;
   ctx.fillStyle = '#5B7362';
-  ctx.font = '16px monospace';
-  ctx.fillText(`IN $${Number(session.buyin).toFixed(0)}   OUT $${Number(session.cashout).toFixed(0)}`, canvas.width / 2, 480);
+  ctx.font = '15px monospace';
+  ctx.fillText(`IN $${Number(session.buyin).toFixed(0)}   OUT $${Number(session.cashout).toFixed(0)}`, canvas.width / 2, figY);
 
   ctx.fillStyle = '#8B9E92';
   ctx.font = '12px monospace';
-  ctx.fillText('LOGGED WITH THE CAGE', canvas.width / 2, canvas.height - 40);
+  ctx.fillText('LOGGED WITH THE CAGE', canvas.width / 2, canvas.height - 30);
 }
 
-function shareCard(sessionId) {
+let bragSessionId = null;
+
+function openBragModal(sessionId) {
+  bragSessionId = sessionId;
+  document.getElementById('bragError').textContent = '';
+  document.getElementById('bragGroupsList').innerHTML = myGroups.map(g => `
+    <label class="group-check-row">
+      <input type="checkbox" class="brag-group-cb" value="${g.id}">
+      ${escapeHtml(g.name)}
+    </label>
+  `).join('');
+  document.getElementById('bragModal').classList.add('open');
+}
+window.openBragModal = openBragModal;
+
+document.getElementById('closeBragModal').addEventListener('click', () => {
+  document.getElementById('bragModal').classList.remove('open');
+});
+document.getElementById('cancelBrag').addEventListener('click', () => {
+  document.getElementById('bragModal').classList.remove('open');
+});
+document.getElementById('confirmBrag').addEventListener('click', async () => {
+  const checkedIds = Array.from(document.querySelectorAll('.brag-group-cb:checked')).map(cb => cb.value);
+  const errEl = document.getElementById('bragError');
+  if (checkedIds.length === 0) { errEl.textContent = 'Pick at least one group.'; return; }
+  try {
+    await api(`/api/sessions/${bragSessionId}/share`, { method: 'POST', body: { groupIds: checkedIds } });
+    document.getElementById('bragModal').classList.remove('open');
+    alert('Shared! It\'ll show up on that group\'s brag board.');
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+});
+
+async function shareCard(sessionId) {
   const s = sessions.find(x => x.id === sessionId);
   if (!s) return;
-  drawShareCard(s);
   document.getElementById('cardModal').classList.add('open');
+  await drawShareCard(s);
 }
 window.shareCard = shareCard;
 
