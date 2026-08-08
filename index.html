@@ -179,6 +179,19 @@
   .photo-preview { width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; margin-top: 8px; display: none; }
   .loading-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
   #importFile, #photoFile { display: none; }
+
+  .admin-row {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 14px; margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .admin-row .aname { font-weight: 600; font-size: 14px; }
+  .admin-row .aemail { font-size: 12px; color: var(--muted); }
+  .admin-row .ameta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .admin-reset-btn {
+    background: transparent; border: 1px solid var(--gold); color: var(--gold);
+    padding: 6px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -198,6 +211,7 @@
   <div class="tabs" id="mainTabs" style="display:none;">
     <button class="tab-btn active" data-tab="ledger">My Ledger</button>
     <button class="tab-btn" data-tab="groups">Groups</button>
+    <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display:none;">Admin</button>
   </div>
 </header>
 
@@ -320,6 +334,11 @@
   <div id="groupsList" style="margin-top:16px;"></div>
 </section>
 
+<section id="tab-admin" style="display:none;">
+  <div class="sub" style="margin-bottom:16px;">Every registered user. Passwords aren't visible to anyone — only stored as one-way hashes — but you can set a temporary one for someone who's locked out.</div>
+  <div id="adminUsersList"></div>
+</section>
+
 </main>
 
 <div class="modal-backdrop" id="feedModal">
@@ -398,10 +417,50 @@ async function boot() {
   if (authToken && currentUser) {
     showApp();
     await loadEverything();
+    await checkAdmin();
   } else {
     showAuth();
   }
 }
+
+async function checkAdmin() {
+  try {
+    const users = await api('/api/admin/users');
+    document.getElementById('adminTabBtn').style.display = 'inline-block';
+    renderAdminUsers(users);
+  } catch (e) {
+    document.getElementById('adminTabBtn').style.display = 'none';
+  }
+}
+
+function renderAdminUsers(users) {
+  const container = document.getElementById('adminUsersList');
+  if (users.length === 0) {
+    container.innerHTML = `<div class="empty"><div class="marquee">No users yet</div></div>`;
+    return;
+  }
+  container.innerHTML = users.map(u => `
+    <div class="admin-row">
+      <div>
+        <div class="aname">${escapeHtml(u.display_name)}</div>
+        <div class="aemail">${escapeHtml(u.email)}</div>
+        <div class="ameta">${u.session_count} session${u.session_count == 1 ? '' : 's'} · joined ${fmtDate(u.created_at)}</div>
+      </div>
+      <button class="admin-reset-btn" onclick="resetUserPassword('${u.id}', '${escapeHtml(u.display_name)}')">Reset Password</button>
+    </div>
+  `).join('');
+}
+
+async function resetUserPassword(userId, name) {
+  if (!confirm(`Set a new temporary password for ${name}? Their current password will stop working.`)) return;
+  try {
+    const result = await api(`/api/admin/users/${userId}/reset-password`, { method: 'POST' });
+    alert(`New temporary password for ${result.displayName} (${result.email}):\n\n${result.tempPassword}\n\nShare this with them directly — it won't be shown again.`);
+  } catch (e) {
+    alert('Could not reset password: ' + e.message);
+  }
+}
+window.resetUserPassword = resetUserPassword;
 
 function showAuth() {
   document.getElementById('authSection').style.display = 'block';
@@ -733,6 +792,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const tab = btn.dataset.tab;
     document.getElementById('tab-ledger').style.display = tab === 'ledger' ? 'block' : 'none';
     document.getElementById('tab-groups').style.display = tab === 'groups' ? 'block' : 'none';
+    document.getElementById('tab-admin').style.display = tab === 'admin' ? 'block' : 'none';
   });
 });
 
