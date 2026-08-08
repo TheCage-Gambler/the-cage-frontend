@@ -385,11 +385,11 @@ async function api(path, { method = 'GET', body, isForm = false } = {}) {
 
 async function boot() {
   try {
-    const stored = await window.storage.get('auth_token', false);
-    if (stored && stored.value) {
-      authToken = stored.value;
-      const savedUser = await window.storage.get('auth_user', false);
-      currentUser = savedUser ? JSON.parse(savedUser.value) : null;
+    const storedToken = localStorage.getItem('auth_token');
+    const storedUser = localStorage.getItem('auth_user');
+    if (storedToken && storedUser) {
+      authToken = storedToken;
+      currentUser = JSON.parse(storedUser);
     }
   } catch (e) {
     authToken = null;
@@ -454,8 +454,8 @@ document.getElementById('authSubmit').addEventListener('click', async () => {
 
     authToken = data.token;
     currentUser = data.user;
-    await window.storage.set('auth_token', authToken, false);
-    await window.storage.set('auth_user', JSON.stringify(currentUser), false);
+    localStorage.setItem('auth_token', authToken);
+    localStorage.setItem('auth_user', JSON.stringify(currentUser));
 
     showApp();
     await loadEverything();
@@ -468,8 +468,8 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   authToken = null;
   currentUser = null;
   try {
-    await window.storage.delete('auth_token', false);
-    await window.storage.delete('auth_user', false);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
   } catch (e) { /* ignore */ }
   showAuth();
 });
