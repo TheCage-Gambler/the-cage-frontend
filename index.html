@@ -300,7 +300,7 @@
 
 <section id="tab-groups" style="display:none;">
   <div id="groupsCapNote" class="cap-note" style="display:none;">
-    Free plan includes 2 groups. Upgrading isn't available in this preview.
+    Free plan includes 2 groups you can create. You can still join as many others as you like — upgrading to create more isn't available in this preview.
   </div>
   <button class="new-btn" id="showCreateGroup" style="margin-bottom:10px;">+ Create a Group</button>
   <button class="new-btn secondary-btn" id="showJoinGroup">Join with a Code</button>
@@ -350,7 +350,9 @@
       </div>
       <button id="closeFeedModal">Close</button>
     </div>
+    <button id="leaveGroupBtn" class="admin-reset-btn" style="margin-bottom:14px;">Leave Group</button>
     <div id="feedLeaderboard"></div>
+    <div id="membersPanel"></div>
     <div class="feed-sort">
       <button class="sort-btn active" data-sort="recent">Most Recent</button>
       <button class="sort-btn" data-sort="biggest">Biggest Wins</button>
@@ -449,6 +451,64 @@ function renderAdminUsers(users) {
       <button class="admin-reset-btn" onclick="resetUserPassword('${u.id}', '${escapeHtml(u.display_name)}')">Reset Password</button>
     </div>
   `).join('');
+}
+
+async function renderMembers(groupId) {
+  const panel = document.getElementById('membersPanel');
+  if (!currentFeedIsOwner) { panel.innerHTML = ''; return; }
+  try {
+    const members = await api(`/api/groups/${groupId}/members`);
+    panel.innerHTML = `
+      <div class="leaderboard">
+        <h4>Members</h4>
+        ${members.map(m => `
+          <div class="lb-row">
+            <span class="lb-name">${escapeHtml(m.display_name)}${m.is_owner ? ' (owner)' : ''}</span>
+            ${!m.is_owner ? `<button class="admin-reset-btn" onclick="removeMember('${groupId}', '${m.id}', '${escapeHtml(m.display_name)}')">Remove</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (e) {
+    panel.innerHTML = '';
+  }
+}
+
+async function removeMember(groupId, userId, name) {
+  if (!confirm(`Remove ${name} from this group? They'll lose access to the shared feed, but their past posts stay unless you remove those separately.`)) return;
+  try {
+    await api(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
+    await renderMembers(groupId);
+  } catch (e) {
+    alert('Could not remove member: ' + e.message);
+  }
+}
+window.removeMember = removeMember;
+
+async function deleteFeedPost(groupId, sessionId) {
+  if (!confirm('Remove this post from the group brag board? It stays in the poster\'s own ledger — this only unshares it here.')) return;
+  try {
+    await api(`/api/groups/${groupId}/feed/${sessionId}`, { method: 'DELETE' });
+    currentFeedData = currentFeedData.filter(item => item.session_id !== sessionId);
+    currentLeaderboard = computeLocalLeaderboard(currentFeedData);
+    renderLeaderboard();
+    renderFeed(document.querySelector('.sort-btn.active').dataset.sort);
+  } catch (e) {
+    alert('Could not remove post: ' + e.message);
+  }
+}
+window.deleteFeedPost = deleteFeedPost;
+
+function computeLocalLeaderboard(feedData) {
+  const totals = {};
+  feedData.forEach(item => {
+    if (!totals[item.author]) totals[item.author] = { total_net: 0, session_count: 0 };
+    totals[item.author].total_net = Number(totals[item.author].total_net) + Number(item.net);
+    totals[item.author].session_count += 1;
+  });
+  return Object.entries(totals)
+    .map(([author, v]) => ({ author, ...v }))
+    .sort((a, b) => b.total_net - a.total_net);
 }
 
 async function resetUserPassword(userId, name) {
@@ -799,7 +859,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ---------- groups ----------
 
 document.getElementById('showCreateGroup').addEventListener('click', () => {
-  if (myGroups.length >= 2) { document.getElementById('groupsCapNote').style.display = 'block'; return; }
+  const ownedCount = myGroups.filter(g => g.owner_id === currentUser.id).length;
+  if (ownedCount >= 2) { document.getElementById('groupsCapNote').style.display = 'block'; return; }
   document.getElementById('createGroupPanel').classList.add('open');
 });
 document.getElementById('cancelCreateGroup').addEventListener('click', () => {
@@ -824,7 +885,6 @@ document.getElementById('confirmCreateGroup').addEventListener('click', async ()
 });
 
 document.getElementById('showJoinGroup').addEventListener('click', () => {
-  if (myGroups.length >= 2) { document.getElementById('groupsCapNote').style.display = 'block'; return; }
   document.getElementById('joinGroupPanel').classList.add('open');
 });
 document.getElementById('cancelJoinGroup').addEventListener('click', () => {
@@ -848,7 +908,8 @@ document.getElementById('confirmJoinGroup').addEventListener('click', async () =
 });
 
 function renderGroups() {
-  document.getElementById('groupsCapNote').style.display = myGroups.length >= 2 ? 'block' : 'none';
+  const ownedCount = myGroups.filter(g => g.owner_id === currentUser.id).length;
+  document.getElementById('groupsCapNote').style.display = ownedCount >= 2 ? 'block' : 'none';
   const container = document.getElementById('groupsList');
   if (myGroups.length === 0) {
     container.innerHTML = `<div class="empty"><div class="marquee">No groups yet</div><div>Create one or join with a code to start sharing wins.</div></div>`;
@@ -865,8 +926,15 @@ function renderGroups() {
 
 let currentFeedData = [];
 let currentLeaderboard = [];
+let currentFeedGroupId = null;
+let currentFeedIsOwner = false;
 
 async function openFeed(groupId, name, code) {
+  currentFeedGroupId = groupId;
+  const group = myGroups.find(g => g.id === groupId);
+  currentFeedIsOwner = group && group.owner_id === currentUser.id;
+  document.getElementById('leaveGroupBtn').textContent = currentFeedIsOwner ? 'Delete Group' : 'Leave Group';
+
   document.getElementById('feedGroupName').textContent = name;
   document.getElementById('feedGroupCode').textContent = 'CODE: ' + code;
   try {
@@ -878,12 +946,37 @@ async function openFeed(groupId, name, code) {
     currentLeaderboard = [];
   }
   renderLeaderboard();
+  await renderMembers(groupId);
   document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('.sort-btn[data-sort="recent"]').classList.add('active');
   renderFeed('recent');
   document.getElementById('feedModal').classList.add('open');
 }
 window.openFeed = openFeed;
+
+document.getElementById('leaveGroupBtn').addEventListener('click', async () => {
+  if (currentFeedIsOwner) {
+    if (!confirm('Delete this group for everyone? This removes the shared brag board and leaderboard for all members — their personal ledgers are untouched. This can\'t be undone.')) return;
+    try {
+      await api(`/api/groups/${currentFeedGroupId}`, { method: 'DELETE' });
+      myGroups = myGroups.filter(g => g.id !== currentFeedGroupId);
+      document.getElementById('feedModal').classList.remove('open');
+      render();
+    } catch (e) {
+      alert('Could not delete group: ' + e.message);
+    }
+  } else {
+    if (!confirm('Leave this group? You\'ll stop seeing its brag board, but your past shared sessions stay in its history.')) return;
+    try {
+      await api(`/api/groups/${currentFeedGroupId}/leave`, { method: 'POST' });
+      myGroups = myGroups.filter(g => g.id !== currentFeedGroupId);
+      document.getElementById('feedModal').classList.remove('open');
+      render();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+});
 
 function renderLeaderboard() {
   const el = document.getElementById('feedLeaderboard');
@@ -921,6 +1014,7 @@ function renderFeed(sortMode) {
       </div>
       <div class="brag-meta">${escapeHtml(item.casino)}${item.game ? ' · ' + escapeHtml(item.game) : ''} · ${fmtDate(item.played_date)}</div>
       ${item.photo_url ? `<img class="brag-photo" src="${escapeHtml(item.photo_url)}" onclick="window.open('${escapeHtml(item.photo_url)}', '_blank')">` : ''}
+      ${currentFeedIsOwner ? `<button class="del-x" style="margin-top:6px;" onclick="deleteFeedPost('${currentFeedGroupId}', '${item.session_id}')">Remove post</button>` : ''}
     </div>
   `).join('');
 }
