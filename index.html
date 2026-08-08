@@ -366,7 +366,7 @@
     <canvas id="shareCanvas" width="600" height="750" style="width:100%;max-width:320px;border-radius:8px;margin:0 auto 16px;display:block;"></canvas>
     <div class="form-actions">
       <button class="cancel-btn" id="closeCardModal">Close</button>
-      <button class="save-btn" id="downloadCard">Save Image</button>
+      <button class="save-btn" id="downloadCard">Text To</button>
     </div>
   </div>
 </div>
@@ -716,7 +716,7 @@ function renderList() {
           </div>
           ${s.notes ? `<div class="ticket-notes">${escapeHtml(s.notes)}</div>` : ''}
           ${s.photo_url ? `<img class="ticket-photo" src="${escapeHtml(s.photo_url)}" onclick="window.open('${escapeHtml(s.photo_url)}', '_blank')">` : ''}
-          <button class="share-card-btn" onclick="shareCard('${s.id}')">Share card</button>
+          <button class="share-card-btn" onclick="shareCard('${s.id}')">Share via text</button>
           ${myGroups.length > 0 ? `<button class="share-card-btn" onclick="openBragModal('${s.id}')">🎉 Brag to Group</button>` : ''}
           <button class="del-x" onclick="deleteSession('${s.id}')">Remove ticket</button>
         </div>
