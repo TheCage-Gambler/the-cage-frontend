@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Cage — Session Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #E3F3E6;
+    --panel: #F1FAF2;
+    --panel-2: #EAF6EC;
+    --line: #C4E0C9;
+    --text: #16261A;
+    --muted: #5B7362;
+    --felt: #1B6B45;
+    --felt-bright: #1B6B45;
+    --magenta: #C41E56;
+    --gold: #96741A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 60px;
+  }
+  .marquee { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.04em; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  header {
+    padding: 28px 20px 22px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(ellipse at top left, rgba(201,162,39,0.10), transparent 55%),
+      radial-gradient(ellipse at top right, rgba(228,53,107,0.08), transparent 55%);
+  }
+  .eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.15em; color: var(--gold); text-transform: uppercase; }
+  h1 { margin: 6px 0 4px; font-size: 30px; font-weight: 700; letter-spacing: 0.03em; }
+  .sub { color: var(--muted); font-size: 13px; max-width: 480px; line-height: 1.5; }
+
+  .account-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .account-line button {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .balance-strip { display: flex; gap: 10px; margin-top: 16px; overflow-x: auto; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px 16px; min-width: 108px; flex-shrink: 0; }
+  .stat .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .stat .value { font-size: 19px; font-weight: 600; margin-top: 4px; }
+  .win-color { color: var(--felt-bright); }
+  .loss-color { color: var(--magenta); }
+
+  main { padding: 20px; max-width: 640px; margin: 0 auto; }
+
+  .new-btn {
+    width: 100%; background: var(--gold); color: #14100a; border: none; border-radius: 4px;
+    padding: 14px; font-family: 'Oswald', sans-serif; font-size: 15px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; margin-bottom: 20px;
+  }
+  .new-btn:active { transform: translateY(1px); }
+  .secondary-btn { background: transparent; border: 1px solid var(--gold); color: var(--gold); }
+
+  .form-panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px; margin-bottom: 24px; display: none;
+  }
+  .form-panel.open { display: block; }
+  .form-panel h3 { margin: 0 0 14px; font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .field input, .field textarea {
+    width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 4px;
+    padding: 10px 12px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px;
+  }
+  .field input.mono-input { font-family: 'IBM Plex Mono', monospace; }
+  .field textarea { resize: vertical; min-height: 50px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .form-actions button {
+    flex: 1; padding: 11px; border-radius: 4px; border: none; font-family: 'Oswald', sans-serif;
+    font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+  }
+  .save-btn { background: var(--felt); color: #eafff2; }
+  .cancel-btn { background: transparent; color: var(--muted); border: 1px solid var(--line) !important; }
+  .error-text { color: var(--magenta); font-size: 12px; margin-top: 8px; }
+  .link-btn { background: none; border: none; color: var(--gold); text-decoration: underline; font-size: 12px; cursor: pointer; padding: 0; margin-top: 10px; }
+
+  .tabs { display: flex; gap: 8px; margin-top: 18px; }
+  .tab-btn { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 8px 16px; border-radius: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; cursor: pointer; }
+  .tab-btn.active { background: var(--gold); color: #14100a; border-color: var(--gold); font-weight: 600; }
+
+  .casino-group { margin-bottom: 28px; }
+  .casino-name {
+    font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: 0.03em; color: var(--text);
+    margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .casino-name .cnet { font-size: 13px; }
+
+  .ticket {
+    position: relative; background: var(--panel-2); border: 1px solid var(--line); border-top: none;
+    padding: 14px 16px 18px; margin-bottom: 12px;
+    clip-path: polygon(0% 0%, 100% 0%, 100% 92%, 96% 100%, 92% 92%, 88% 100%, 84% 92%, 80% 100%, 76% 92%, 72% 100%,
+      68% 92%, 64% 100%, 60% 92%, 56% 100%, 52% 92%, 48% 100%, 44% 92%, 40% 100%, 36% 92%, 32% 100%, 28% 92%, 24% 100%,
+      20% 92%, 16% 100%, 12% 92%, 8% 100%, 4% 92%, 0% 100%);
+  }
+  .ticket::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--gold); }
+  .ticket-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .ticket-game { font-size: 14px; font-weight: 600; }
+  .ticket-date { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .ticket-net { font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; white-space: nowrap; }
+  .ticket-figures { display: flex; gap: 18px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted); }
+  .ticket-figures span b { color: var(--text); font-weight: 500; }
+  .ticket-notes { margin-top: 8px; font-size: 12px; color: var(--muted); font-style: italic; }
+  .ticket-photo { width: 100%; max-height: 220px; object-fit: cover; border-radius: 4px; margin-top: 10px; display: block; }
+  .del-x { background: none; border: none; color: var(--muted); font-size: 11px; cursor: pointer; text-decoration: underline; padding: 0; margin-top: 8px; }
+
+  .empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+  .empty .marquee { font-size: 15px; color: var(--text); margin-bottom: 6px; }
+
+  .cap-note { background: var(--panel); border: 1px solid var(--gold); color: var(--gold); font-size: 12px; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; }
+  .group-checks { display: flex; flex-direction: column; gap: 8px; }
+  .group-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .group-check-row input { width: auto; }
+
+  .group-card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; cursor: pointer; }
+  .group-card .gname { font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: 0.02em; }
+  .group-card .gcode { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--gold); margin-top: 4px; }
+  .group-card .gmeta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; padding: 20px; overflow-y: auto; }
+  .modal-backdrop.open { display: block; }
+  .modal-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; max-width: 560px; margin: 20px auto; }
+  .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .modal-header button { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+  .leaderboard { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin-bottom: 16px; }
+  .leaderboard h4 { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
+  .lb-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-rank { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); width: 18px; }
+  .lb-name { flex: 1; font-size: 14px; font-weight: 500; }
+  .lb-count { font-size: 11px; color: var(--muted); margin-right: 8px; }
+  .lb-net { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; }
+
+  .brag-item { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; }
+  .brag-top { display: flex; justify-content: space-between; align-items: center; }
+  .brag-author { font-size: 12px; color: var(--gold); font-weight: 600; }
+  .brag-net { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; }
+  .brag-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .brag-photo { width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; margin-top: 8px; }
+
+  .feed-sort { display: flex; gap: 8px; margin-bottom: 14px; }
+  .sort-btn { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; }
+  .sort-btn.active { background: var(--felt); color: #eafff2; border-color: var(--felt); }
+
+  .share-card-btn { background: none; border: 1px solid var(--gold); color: var(--gold); font-size: 11px; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-top: 8px; margin-right: 8px; }
+
+  .footer-actions { display: flex; gap: 10px; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .footer-actions button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; }
+
+  .photo-preview { width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; margin-top: 8px; display: none; }
+  .loading-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  #importFile, #photoFile { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">The Cage · Personal Gambling Ledger</div>
+  <h1 class="marquee">Money In. Money Out.</h1>
+  <div class="sub" id="heroSub">Your sessions are saved to your own account now — synced for real, not just on this device.</div>
+
+  <div id="accountLine" class="account-line" style="display:none;">
+    <span id="accountName"></span>
+    <button id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="balance-strip" id="statsStrip" style="display:none;"></div>
+
+  <div class="tabs" id="mainTabs" style="display:none;">
+    <button class="tab-btn active" data-tab="ledger">My Ledger</button>
+    <button class="tab-btn" data-tab="groups">Groups</button>
+  </div>
+</header>
+
+<main>
+
+<section id="authSection">
+  <div class="form-panel open">
+    <h3 id="authTitle">Log In</h3>
+    <div class="field" id="authNameField" style="display:none;">
+      <label>Your name (shown to groups)</label>
+      <input type="text" id="authName" placeholder="e.g. Onore">
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="you@example.com">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="authPassword" placeholder="At least 6 characters">
+    </div>
+    <div id="authError" class="error-text"></div>
+    <div class="form-actions">
+      <button class="save-btn" id="authSubmit">Log In</button>
+    </div>
+    <button class="link-btn" id="authToggle">Don't have an account? Sign up</button>
+  </div>
+</section>
+
+<section id="tab-ledger" style="display:none;">
+  <button class="new-btn" id="toggleForm">+ Log a Session</button>
+
+  <div class="form-panel" id="formPanel">
+    <h3>New Session</h3>
+    <div class="field">
+      <label>Casino</label>
+      <input type="text" id="fCasino" list="casinoList" placeholder="e.g. Circa, Cannery, South Point">
+      <datalist id="casinoList"></datalist>
+    </div>
+    <div class="field">
+      <label>Machine / Game</label>
+      <input type="text" id="fGame" placeholder="e.g. Dragon Link, Buffalo Gold">
+    </div>
+    <div class="row-2">
+      <div class="field">
+        <label>Buy-in ($)</label>
+        <input type="number" step="0.01" inputmode="decimal" class="mono-input" id="fBuyin" placeholder="100">
+      </div>
+      <div class="field">
+        <label>Cash-out ($)</label>
+        <input type="number" step="0.01" inputmode="decimal" class="mono-input" id="fCashout" placeholder="60">
+      </div>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="fDate">
+    </div>
+    <div class="field">
+      <label>Notes (optional)</label>
+      <textarea id="fNotes" placeholder="Bonus hit, free play used, etc."></textarea>
+    </div>
+    <div class="field">
+      <label>Photo (optional)</label>
+      <button type="button" class="new-btn secondary-btn" id="pickPhotoBtn" style="margin-bottom:0;">📷 Add a Photo</button>
+      <input type="file" id="photoFile" accept="image/*" capture="environment">
+      <img id="photoPreview" class="photo-preview">
+    </div>
+    <div class="field" id="shareGroupsField" style="display:none;">
+      <label>Share to groups</label>
+      <div id="shareGroupsList" class="group-checks"></div>
+    </div>
+    <div id="saveError" class="error-text"></div>
+    <div class="form-actions">
+      <button class="cancel-btn" id="cancelForm">Cancel</button>
+      <button class="save-btn" id="saveSession">Save Ticket</button>
+    </div>
+  </div>
+
+  <div id="sessionsContainer"></div>
+
+  <div class="footer-actions">
+    <button id="exportBtn">Export Backup (.json)</button>
+    <button id="importBtn">Import Backup</button>
+    <input type="file" id="importFile" accept="application/json">
+  </div>
+</section>
+
+<section id="tab-groups" style="display:none;">
+  <div id="groupsCapNote" class="cap-note" style="display:none;">
+    Free plan includes 2 groups. Upgrading isn't available in this preview.
+  </div>
+  <button class="new-btn" id="showCreateGroup" style="margin-bottom:10px;">+ Create a Group</button>
+  <button class="new-btn secondary-btn" id="showJoinGroup">Join with a Code</button>
+
+  <div class="form-panel" id="createGroupPanel">
+    <h3>Create Group</h3>
+    <div class="field">
+      <label>Group name</label>
+      <input type="text" id="newGroupName" placeholder="e.g. Vegas Trip Crew">
+    </div>
+    <div id="createGroupError" class="error-text"></div>
+    <div class="form-actions">
+      <button class="cancel-btn" id="cancelCreateGroup">Cancel</button>
+      <button class="save-btn" id="confirmCreateGroup">Create</button>
+    </div>
+  </div>
+
+  <div class="form-panel" id="joinGroupPanel">
+    <h3>Join Group</h3>
+    <div class="field">
+      <label>Enter code</label>
+      <input type="text" id="joinCode" placeholder="e.g. 7F3K9Q" style="text-transform:uppercase;">
+    </div>
+    <div id="joinGroupError" class="error-text"></div>
+    <div class="form-actions">
+      <button class="cancel-btn" id="cancelJoinGroup">Cancel</button>
+      <button class="save-btn" id="confirmJoinGroup">Join</button>
+    </div>
+  </div>
+
+  <div id="groupsList" style="margin-top:16px;"></div>
+</section>
+
+</main>
+
+<div class="modal-backdrop" id="feedModal">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <div class="marquee" id="feedGroupName" style="font-size:16px;"></div>
+        <div class="mono" id="feedGroupCode" style="font-size:11px;color:var(--muted);"></div>
+      </div>
+      <button id="closeFeedModal">Close</button>
+    </div>
+    <div id="feedLeaderboard"></div>
+    <div class="feed-sort">
+      <button class="sort-btn active" data-sort="recent">Most Recent</button>
+      <button class="sort-btn" data-sort="biggest">Biggest Wins</button>
+    </div>
+    <div id="feedContent"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cardModal">
+  <div class="modal-panel" style="text-align:center;">
+    <canvas id="shareCanvas" width="600" height="750" style="width:100%;max-width:320px;border-radius:8px;margin:0 auto 16px;display:block;"></canvas>
+    <div class="form-actions">
+      <button class="cancel-btn" id="closeCardModal">Close</button>
+      <button class="save-btn" id="downloadCard">Save Image</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'https://the-cage-backend.onrender.com';
+
+let authToken = null;
+let currentUser = null;
+let sessions = [];
+let myGroups = [];
+let pendingPhotoFile = null;
+
+// ---------- api helper ----------
+
+async function api(path, { method = 'GET', body, isForm = false } = {}) {
+  const headers = {};
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  if (!isForm) headers['Content-Type'] = 'application/json';
+
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers,
+    body: isForm ? body : (body ? JSON.stringify(body) : undefined)
+  });
+
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* no body */ }
+
+  if (!res.ok) {
+    throw new Error((data && data.error) || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+// ---------- boot ----------
+
+async function boot() {
+  try {
+    const stored = await window.storage.get('auth_token', false);
+    if (stored && stored.value) {
+      authToken = stored.value;
+      const savedUser = await window.storage.get('auth_user', false);
+      currentUser = savedUser ? JSON.parse(savedUser.value) : null;
+    }
+  } catch (e) {
+    authToken = null;
+  }
+
+  if (authToken && currentUser) {
+    showApp();
+    await loadEverything();
+  } else {
+    showAuth();
+  }
+}
+
+function showAuth() {
+  document.getElementById('authSection').style.display = 'block';
+  document.getElementById('tab-ledger').style.display = 'none';
+  document.getElementById('tab-groups').style.display = 'none';
+  document.getElementById('mainTabs').style.display = 'none';
+  document.getElementById('statsStrip').style.display = 'none';
+  document.getElementById('accountLine').style.display = 'none';
+  document.getElementById('heroSub').textContent = "Log in or create an account — to log your slot play session.";
+}
+
+function showApp() {
+  document.getElementById('authSection').style.display = 'none';
+  document.getElementById('tab-ledger').style.display = 'block';
+  document.getElementById('mainTabs').style.display = 'flex';
+  document.getElementById('statsStrip').style.display = 'flex';
+  document.getElementById('accountLine').style.display = 'flex';
+  document.getElementById('accountName').textContent = 'Logged in as ' + currentUser.display_name;
+  document.getElementById('heroSub').textContent = "Your sessions are saved to your own account — synced for real, not just on this device.";
+}
+
+// ---------- auth ----------
+
+let authMode = 'login';
+document.getElementById('authToggle').addEventListener('click', () => {
+  authMode = authMode === 'login' ? 'signup' : 'login';
+  document.getElementById('authTitle').textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
+  document.getElementById('authSubmit').textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
+  document.getElementById('authNameField').style.display = authMode === 'signup' ? 'block' : 'none';
+  document.getElementById('authToggle').textContent = authMode === 'login'
+    ? "Don't have an account? Sign up"
+    : "Already have an account? Log in";
+  document.getElementById('authError').textContent = '';
+});
+
+document.getElementById('authSubmit').addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const displayName = document.getElementById('authName').value.trim();
+  const errEl = document.getElementById('authError');
+  errEl.textContent = '';
+
+  if (!email || !password) { errEl.textContent = 'Enter an email and password.'; return; }
+  if (authMode === 'signup' && !displayName) { errEl.textContent = 'Enter a display name.'; return; }
+
+  try {
+    const path = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const body = authMode === 'login' ? { email, password } : { email, password, displayName };
+    const data = await api(path, { method: 'POST', body });
+
+    authToken = data.token;
+    currentUser = data.user;
+    await window.storage.set('auth_token', authToken, false);
+    await window.storage.set('auth_user', JSON.stringify(currentUser), false);
+
+    showApp();
+    await loadEverything();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  authToken = null;
+  currentUser = null;
+  try {
+    await window.storage.delete('auth_token', false);
+    await window.storage.delete('auth_user', false);
+  } catch (e) { /* ignore */ }
+  showAuth();
+});
+
+// ---------- helpers ----------
+
+function money(n) {
+  const num = Number(n);
+  const sign = num < 0 ? '-' : '';
+  return sign + '$' + Math.abs(num).toFixed(2);
+}
+function fmtDate(d) {
+  const dt = new Date(d + 'T12:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : str;
+  return d.innerHTML;
+}
+function genCodeDisplay(code) { return code; }
+
+// ---------- load everything ----------
+
+async function loadEverything() {
+  try {
+    sessions = await api('/api/sessions');
+  } catch (e) {
+    sessions = [];
+    console.error(e);
+  }
+  try {
+    myGroups = await api('/api/groups');
+  } catch (e) {
+    myGroups = [];
+    console.error(e);
+  }
+  render();
+}
+
+function render() {
+  renderStats();
+  renderList();
+  renderCasinoList();
+  renderShareCheckboxes();
+  renderGroups();
+}
+
+function renderStats() {
+  const strip = document.getElementById('statsStrip');
+  if (sessions.length === 0) {
+    strip.innerHTML = `<div class="stat"><div class="label">Sessions</div><div class="value">0</div></div>`;
+    return;
+  }
+  const totalIn = sessions.reduce((s, x) => s + Number(x.buyin), 0);
+  const totalOut = sessions.reduce((s, x) => s + Number(x.cashout), 0);
+  const net = totalOut - totalIn;
+  const wins = sessions.filter(x => Number(x.cashout) > Number(x.buyin)).length;
+  const winRate = Math.round((wins / sessions.length) * 100);
+
+  strip.innerHTML = `
+    <div class="stat"><div class="label">Net</div><div class="value mono ${net >= 0 ? 'win-color' : 'loss-color'}">${money(net)}</div></div>
+    <div class="stat"><div class="label">Sessions</div><div class="value mono">${sessions.length}</div></div>
+    <div class="stat"><div class="label">Win Rate</div><div class="value mono">${winRate}%</div></div>
+    <div class="stat"><div class="label">Total In</div><div class="value mono">${money(totalIn)}</div></div>
+  `;
+}
+
+function renderCasinoList() {
+  const dl = document.getElementById('casinoList');
+  const names = [...new Set(sessions.map(s => s.casino))];
+  dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
+function renderList() {
+  const container = document.getElementById('sessionsContainer');
+  if (sessions.length === 0) {
+    container.innerHTML = `<div class="empty"><div class="marquee">The cage is empty</div><div>Log your first session to start the ledger.</div></div>`;
+    return;
+  }
+  const byCasino = {};
+  sessions.forEach(s => {
+    if (!byCasino[s.casino]) byCasino[s.casino] = [];
+    byCasino[s.casino].push(s);
+  });
+  const casinoOrder = Object.keys(byCasino).sort((a, b) => {
+    const latestA = Math.max(...byCasino[a].map(s => new Date(s.played_date).getTime()));
+    const latestB = Math.max(...byCasino[b].map(s => new Date(s.played_date).getTime()));
+    return latestB - latestA;
+  });
+
+  container.innerHTML = casinoOrder.map(casino => {
+    const list = byCasino[casino].sort((a, b) => new Date(b.played_date) - new Date(a.played_date));
+    const casinoNet = list.reduce((s, x) => s + (Number(x.cashout) - Number(x.buyin)), 0);
+    const tickets = list.map(s => {
+      const net = Number(s.cashout) - Number(s.buyin);
+      return `
+        <div class="ticket">
+          <div class="ticket-top">
+            <div>
+              <div class="ticket-game">${escapeHtml(s.game || 'Unspecified machine')}</div>
+              <div class="ticket-date">${fmtDate(s.played_date)}</div>
+            </div>
+            <div class="ticket-net ${net >= 0 ? 'win-color' : 'loss-color'}">${money(net)}</div>
+          </div>
+          <div class="ticket-figures">
+            <span>In <b>${money(s.buyin)}</b></span>
+            <span>Out <b>${money(s.cashout)}</b></span>
+          </div>
+          ${s.notes ? `<div class="ticket-notes">${escapeHtml(s.notes)}</div>` : ''}
+          ${s.photo_url ? `<img class="ticket-photo" src="${escapeHtml(s.photo_url)}">` : ''}
+          <button class="share-card-btn" onclick="shareCard('${s.id}')">Share card</button>
+          <button class="del-x" onclick="deleteSession('${s.id}')">Remove ticket</button>
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="casino-group">
+        <div class="casino-name">
+          <span>${escapeHtml(casino)}</span>
+          <span class="cnet mono ${casinoNet >= 0 ? 'win-color' : 'loss-color'}">${money(casinoNet)}</span>
+        </div>
+        ${tickets}
+      </div>
+    `;
+  }).join('');
+}
+
+async function deleteSession(id) {
+  try {
+    await api(`/api/sessions/${id}`, { method: 'DELETE' });
+    sessions = sessions.filter(s => s.id !== id);
+    render();
+  } catch (e) {
+    alert('Could not remove session: ' + e.message);
+  }
+}
+window.deleteSession = deleteSession;
+
+// ---------- new session form ----------
+
+document.getElementById('toggleForm').addEventListener('click', () => {
+  const panel = document.getElementById('formPanel');
+  panel.classList.add('open');
+  document.getElementById('fDate').valueAsDate = new Date();
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+document.getElementById('cancelForm').addEventListener('click', () => {
+  document.getElementById('formPanel').classList.remove('open');
+  clearForm();
+});
+function clearForm() {
+  document.getElementById('fCasino').value = '';
+  document.getElementById('fGame').value = '';
+  document.getElementById('fBuyin').value = '';
+  document.getElementById('fCashout').value = '';
+  document.getElementById('fNotes').value = '';
+  document.getElementById('saveError').textContent = '';
+  pendingPhotoFile = null;
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('photoFile').value = '';
+}
+
+document.getElementById('pickPhotoBtn').addEventListener('click', () => {
+  document.getElementById('photoFile').click();
+});
+document.getElementById('photoFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  pendingPhotoFile = file;
+  const preview = document.getElementById('photoPreview');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+});
+
+function renderShareCheckboxes() {
+  const field = document.getElementById('shareGroupsField');
+  const list = document.getElementById('shareGroupsList');
+  if (myGroups.length === 0) { field.style.display = 'none'; return; }
+  field.style.display = 'block';
+  list.innerHTML = myGroups.map(g => `
+    <label class="group-check-row">
+      <input type="checkbox" class="share-group-cb" value="${g.id}">
+      ${escapeHtml(g.name)}
+    </label>
+  `).join('');
+}
+
+document.getElementById('saveSession').addEventListener('click', async () => {
+  const casino = document.getElementById('fCasino').value.trim();
+  const game = document.getElementById('fGame').value.trim();
+  const buyin = parseFloat(document.getElementById('fBuyin').value);
+  const cashout = parseFloat(document.getElementById('fCashout').value);
+  const playedDate = document.getElementById('fDate').value;
+  const notes = document.getElementById('fNotes').value.trim();
+  const errEl = document.getElementById('saveError');
+  errEl.textContent = '';
+
+  if (!casino) { errEl.textContent = 'Enter a casino name.'; return; }
+  if (isNaN(buyin) || isNaN(cashout)) { errEl.textContent = 'Enter both buy-in and cash-out amounts.'; return; }
+  if (!playedDate) { errEl.textContent = 'Pick a date.'; return; }
+
+  const saveBtn = document.getElementById('saveSession');
+  saveBtn.disabled = true;
+  saveBtn.textContent = pendingPhotoFile ? 'Uploading photo…' : 'Saving…';
+
+  try {
+    let photoUrl = null;
+    if (pendingPhotoFile) {
+      const formData = new FormData();
+      formData.append('photo', pendingPhotoFile);
+      const uploadResult = await api('/api/photos', { method: 'POST', body: formData, isForm: true });
+      photoUrl = uploadResult.url;
+    }
+
+    const checkedIds = Array.from(document.querySelectorAll('.share-group-cb:checked')).map(cb => cb.value);
+
+    const session = await api('/api/sessions', {
+      method: 'POST',
+      body: { casino, game, buyin, cashout, playedDate, notes, photoUrl, shareToGroupIds: checkedIds }
+    });
+
+    sessions.unshift(session);
+    document.getElementById('formPanel').classList.remove('open');
+    clearForm();
+    render();
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Ticket';
+  }
+});
+
+// ---------- export / import (personal backup, unchanged) ----------
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(sessions, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `the-cage-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+document.getElementById('importBtn').addEventListener('click', () => {
+  alert('Since sessions now live on the server, imported backups are for reference only and won\'t be re-uploaded automatically. Let Claude know if you want that wired up.');
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', (e) => {
+  e.target.value = '';
+});
+
+// ---------- tabs ----------
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-ledger').style.display = tab === 'ledger' ? 'block' : 'none';
+    document.getElementById('tab-groups').style.display = tab === 'groups' ? 'block' : 'none';
+  });
+});
+
+// ---------- groups ----------
+
+document.getElementById('showCreateGroup').addEventListener('click', () => {
+  if (myGroups.length >= 2) { document.getElementById('groupsCapNote').style.display = 'block'; return; }
+  document.getElementById('createGroupPanel').classList.add('open');
+});
+document.getElementById('cancelCreateGroup').addEventListener('click', () => {
+  document.getElementById('createGroupPanel').classList.remove('open');
+  document.getElementById('newGroupName').value = '';
+});
+document.getElementById('confirmCreateGroup').addEventListener('click', async () => {
+  const name = document.getElementById('newGroupName').value.trim();
+  const errEl = document.getElementById('createGroupError');
+  errEl.textContent = '';
+  if (!name) { errEl.textContent = 'Give the group a name.'; return; }
+  try {
+    const group = await api('/api/groups', { method: 'POST', body: { name } });
+    myGroups.push(group);
+    document.getElementById('createGroupPanel').classList.remove('open');
+    document.getElementById('newGroupName').value = '';
+    render();
+    alert(`Group created! Share this code with your group: ${group.code}`);
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+});
+
+document.getElementById('showJoinGroup').addEventListener('click', () => {
+  if (myGroups.length >= 2) { document.getElementById('groupsCapNote').style.display = 'block'; return; }
+  document.getElementById('joinGroupPanel').classList.add('open');
+});
+document.getElementById('cancelJoinGroup').addEventListener('click', () => {
+  document.getElementById('joinGroupPanel').classList.remove('open');
+  document.getElementById('joinCode').value = '';
+});
+document.getElementById('confirmJoinGroup').addEventListener('click', async () => {
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  const errEl = document.getElementById('joinGroupError');
+  errEl.textContent = '';
+  if (!code) { errEl.textContent = 'Enter a code.'; return; }
+  try {
+    const group = await api('/api/groups/join', { method: 'POST', body: { code } });
+    myGroups.push(group);
+    document.getElementById('joinGroupPanel').classList.remove('open');
+    document.getElementById('joinCode').value = '';
+    render();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+});
+
+function renderGroups() {
+  document.getElementById('groupsCapNote').style.display = myGroups.length >= 2 ? 'block' : 'none';
+  const container = document.getElementById('groupsList');
+  if (myGroups.length === 0) {
+    container.innerHTML = `<div class="empty"><div class="marquee">No groups yet</div><div>Create one or join with a code to start sharing wins.</div></div>`;
+    return;
+  }
+  container.innerHTML = myGroups.map(g => `
+    <div class="group-card" onclick="openFeed('${g.id}', '${escapeHtml(g.name)}', '${g.code}')">
+      <div class="gname">${escapeHtml(g.name)}</div>
+      <div class="gcode">CODE: ${g.code}</div>
+      <div class="gmeta">Tap to view the brag board</div>
+    </div>
+  `).join('');
+}
+
+let currentFeedData = [];
+let currentLeaderboard = [];
+
+async function openFeed(groupId, name, code) {
+  document.getElementById('feedGroupName').textContent = name;
+  document.getElementById('feedGroupCode').textContent = 'CODE: ' + code;
+  try {
+    const result = await api(`/api/groups/${groupId}/feed`);
+    currentFeedData = result.feed;
+    currentLeaderboard = result.leaderboard;
+  } catch (e) {
+    currentFeedData = [];
+    currentLeaderboard = [];
+  }
+  renderLeaderboard();
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.sort-btn[data-sort="recent"]').classList.add('active');
+  renderFeed('recent');
+  document.getElementById('feedModal').classList.add('open');
+}
+window.openFeed = openFeed;
+
+function renderLeaderboard() {
+  const el = document.getElementById('feedLeaderboard');
+  if (currentLeaderboard.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="leaderboard">
+      <h4>Leaderboard</h4>
+      ${currentLeaderboard.map((row, i) => `
+        <div class="lb-row">
+          <span class="lb-rank">#${i + 1}</span>
+          <span class="lb-name">${escapeHtml(row.author)}</span>
+          <span class="lb-count">${row.session_count} session${row.session_count == 1 ? '' : 's'}</span>
+          <span class="lb-net mono ${Number(row.total_net) >= 0 ? 'win-color' : 'loss-color'}">${money(row.total_net)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderFeed(sortMode) {
+  const content = document.getElementById('feedContent');
+  if (currentFeedData.length === 0) {
+    content.innerHTML = `<div class="empty"><div class="marquee">No brags yet</div><div>Log a session and share it here.</div></div>`;
+    return;
+  }
+  const sorted = [...currentFeedData].sort((a, b) => {
+    if (sortMode === 'biggest') return Number(b.net) - Number(a.net);
+    return new Date(b.played_date) - new Date(a.played_date);
+  });
+  content.innerHTML = sorted.map(item => `
+    <div class="brag-item">
+      <div class="brag-top">
+        <span class="brag-author">${escapeHtml(item.author)}</span>
+        <span class="brag-net mono ${Number(item.net) >= 0 ? 'win-color' : 'loss-color'}">${money(item.net)}</span>
+      </div>
+      <div class="brag-meta">${escapeHtml(item.casino)}${item.game ? ' · ' + escapeHtml(item.game) : ''} · ${fmtDate(item.played_date)}</div>
+      ${item.photo_url ? `<img class="brag-photo" src="${escapeHtml(item.photo_url)}">` : ''}
+    </div>
+  `).join('');
+}
+
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderFeed(btn.dataset.sort);
+  });
+});
+document.getElementById('closeFeedModal').addEventListener('click', () => {
+  document.getElementById('feedModal').classList.remove('open');
+});
+
+// ---------- share card (unchanged, works from local session data) ----------
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  let lines = [];
+  for (let w of words) {
+    const test = line + w + ' ';
+    if (ctx.measureText(test).width > maxWidth && line !== '') { lines.push(line); line = w + ' '; }
+    else { line = test; }
+  }
+  lines.push(line);
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
+}
+
+function drawShareCard(session) {
+  const canvas = document.getElementById('shareCanvas');
+  const ctx = canvas.getContext('2d');
+  const net = Number(session.cashout) - Number(session.buyin);
+  const isWin = net >= 0;
+
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, '#E3F3E6');
+  grad.addColorStop(1, '#F1FAF2');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#96741A';
+  ctx.font = '600 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('THE CAGE', canvas.width / 2, 70);
+
+  ctx.fillStyle = '#5B7362';
+  ctx.font = '14px monospace';
+  ctx.fillText(fmtDate(session.played_date).toUpperCase(), canvas.width / 2, 100);
+
+  ctx.fillStyle = '#16261A';
+  ctx.font = '600 30px Georgia, serif';
+  wrapText(ctx, session.casino, canvas.width / 2, 180, 500, 36);
+
+  ctx.fillStyle = '#5B7362';
+  ctx.font = '20px sans-serif';
+  ctx.fillText(session.game || 'Slot session', canvas.width / 2, 240);
+
+  ctx.strokeStyle = '#C4E0C9';
+  ctx.beginPath();
+  ctx.moveTo(80, 300);
+  ctx.lineTo(canvas.width - 80, 300);
+  ctx.stroke();
+
+  ctx.fillStyle = isWin ? '#1B6B45' : '#C41E56';
+  ctx.font = '700 90px monospace';
+  ctx.fillText((net >= 0 ? '+' : '-') + '$' + Math.abs(net).toFixed(0), canvas.width / 2, 430);
+
+  ctx.fillStyle = '#5B7362';
+  ctx.font = '16px monospace';
+  ctx.fillText(`IN $${Number(session.buyin).toFixed(0)}   OUT $${Number(session.cashout).toFixed(0)}`, canvas.width / 2, 480);
+
+  ctx.fillStyle = '#8B9E92';
+  ctx.font = '12px monospace';
+  ctx.fillText('LOGGED WITH THE CAGE', canvas.width / 2, canvas.height - 40);
+}
+
+function shareCard(sessionId) {
+  const s = sessions.find(x => x.id === sessionId);
+  if (!s) return;
+  drawShareCard(s);
+  document.getElementById('cardModal').classList.add('open');
+}
+window.shareCard = shareCard;
+
+document.getElementById('closeCardModal').addEventListener('click', () => {
+  document.getElementById('cardModal').classList.remove('open');
+});
+document.getElementById('downloadCard').addEventListener('click', () => {
+  const canvas = document.getElementById('shareCanvas');
+  canvas.toBlob(async (blob) => {
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], 'cage-win.png', { type: 'image/png' })] })) {
+      try {
+        await navigator.share({ files: [new File([blob], 'cage-win.png', { type: 'image/png' })] });
+        return;
+      } catch (e) { /* fall through */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cage-win.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+});
+
+boot();
+</script>
+
+</body>
+</html>
