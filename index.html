@@ -277,6 +277,7 @@
       <button type="button" class="new-btn secondary-btn" id="pickPhotoBtn" style="margin-bottom:0;">📷 Add a Photo</button>
       <input type="file" id="photoFile" accept="image/*">
       <img id="photoPreview" class="photo-preview">
+      <button type="button" class="link-btn" id="removePhotoBtn" style="display:none;">Remove photo</button>
     </div>
     <div class="field" id="shareGroupsField" style="display:none;">
       <label>Share to groups</label>
@@ -394,6 +395,8 @@ let currentUser = null;
 let sessions = [];
 let myGroups = [];
 let pendingPhotoFile = null;
+let editingSessionId = null;
+let removePhotoFlag = false;
 
 // ---------- api helper ----------
 
@@ -718,6 +721,7 @@ function renderList() {
           ${s.photo_url ? `<img class="ticket-photo" src="${escapeHtml(s.photo_url)}" onclick="window.open('${escapeHtml(s.photo_url)}', '_blank')">` : ''}
           <button class="share-card-btn" onclick="shareCard('${s.id}')">Share via text</button>
           ${myGroups.length > 0 ? `<button class="share-card-btn" onclick="openBragModal('${s.id}')">🎉 Brag to Group</button>` : ''}
+          <button class="share-card-btn" onclick="openEditForm('${s.id}')">Edit</button>
           <button class="del-x" onclick="deleteSession('${s.id}')">Remove ticket</button>
         </div>
       `;
@@ -748,10 +752,57 @@ window.deleteSession = deleteSession;
 // ---------- new session form ----------
 
 document.getElementById('toggleForm').addEventListener('click', () => {
+  editingSessionId = null;
+  document.getElementById('formPanel').querySelector('h3').textContent = 'New Session';
+  document.getElementById('saveSession').textContent = 'Save Ticket';
   const panel = document.getElementById('formPanel');
   panel.classList.add('open');
   document.getElementById('fDate').valueAsDate = new Date();
+  renderShareCheckboxes();
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+function openEditForm(sessionId) {
+  const s = sessions.find(x => x.id === sessionId);
+  if (!s) return;
+  editingSessionId = sessionId;
+  pendingPhotoFile = null;
+  removePhotoFlag = false;
+
+  document.getElementById('formPanel').querySelector('h3').textContent = 'Edit Session';
+  document.getElementById('saveSession').textContent = 'Save Changes';
+  document.getElementById('fCasino').value = s.casino;
+  document.getElementById('fGame').value = s.game || '';
+  document.getElementById('fBuyin').value = s.buyin;
+  document.getElementById('fCashout').value = s.cashout;
+  document.getElementById('fDate').value = new Date(s.played_date).toISOString().slice(0, 10);
+  document.getElementById('fNotes').value = s.notes || '';
+
+  const preview = document.getElementById('photoPreview');
+  const removeBtn = document.getElementById('removePhotoBtn');
+  if (s.photo_url) {
+    preview.src = s.photo_url;
+    preview.style.display = 'block';
+    removeBtn.style.display = 'inline-block';
+  } else {
+    preview.style.display = 'none';
+    removeBtn.style.display = 'none';
+  }
+
+  document.getElementById('shareGroupsField').style.display = 'none'; // editing doesn't re-trigger a share
+  document.getElementById('saveError').textContent = '';
+  const panel = document.getElementById('formPanel');
+  panel.classList.add('open');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+window.openEditForm = openEditForm;
+
+document.getElementById('removePhotoBtn').addEventListener('click', () => {
+  removePhotoFlag = true;
+  pendingPhotoFile = null;
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('photoPreview').src = '';
+  document.getElementById('removePhotoBtn').style.display = 'none';
 });
 document.getElementById('cancelForm').addEventListener('click', () => {
   document.getElementById('formPanel').classList.remove('open');
@@ -765,8 +816,14 @@ function clearForm() {
   document.getElementById('fNotes').value = '';
   document.getElementById('saveError').textContent = '';
   pendingPhotoFile = null;
+  removePhotoFlag = false;
+  editingSessionId = null;
   document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('removePhotoBtn').style.display = 'none';
   document.getElementById('photoFile').value = '';
+  document.getElementById('formPanel').querySelector('h3').textContent = 'New Session';
+  document.getElementById('saveSession').textContent = 'Save Ticket';
+  renderShareCheckboxes();
 }
 
 document.getElementById('pickPhotoBtn').addEventListener('click', () => {
@@ -776,9 +833,11 @@ document.getElementById('photoFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   pendingPhotoFile = file;
+  removePhotoFlag = false;
   const preview = document.getElementById('photoPreview');
   preview.src = URL.createObjectURL(file);
   preview.style.display = 'block';
+  document.getElementById('removePhotoBtn').style.display = 'none';
 });
 
 function renderShareCheckboxes() {
@@ -813,22 +872,32 @@ document.getElementById('saveSession').addEventListener('click', async () => {
   saveBtn.textContent = pendingPhotoFile ? 'Uploading photo…' : 'Saving…';
 
   try {
-    let photoUrl = null;
+    let uploadedPhotoUrl = null;
     if (pendingPhotoFile) {
       const formData = new FormData();
       formData.append('photo', pendingPhotoFile);
       const uploadResult = await api('/api/photos', { method: 'POST', body: formData, isForm: true });
-      photoUrl = uploadResult.url;
+      uploadedPhotoUrl = uploadResult.url;
     }
 
-    const checkedIds = Array.from(document.querySelectorAll('.share-group-cb:checked')).map(cb => cb.value);
+    if (editingSessionId) {
+      const body = { casino, game, buyin, cashout, playedDate, notes };
+      if (pendingPhotoFile) body.photoUrl = uploadedPhotoUrl;
+      else if (removePhotoFlag) body.photoUrl = null;
+      // else: photoUrl key omitted entirely, so the backend leaves the existing photo alone
 
-    const session = await api('/api/sessions', {
-      method: 'POST',
-      body: { casino, game, buyin, cashout, playedDate, notes, photoUrl, shareToGroupIds: checkedIds }
-    });
+      const updated = await api(`/api/sessions/${editingSessionId}`, { method: 'PUT', body });
+      const idx = sessions.findIndex(x => x.id === editingSessionId);
+      if (idx > -1) sessions[idx] = updated;
+    } else {
+      const checkedIds = Array.from(document.querySelectorAll('.share-group-cb:checked')).map(cb => cb.value);
+      const session = await api('/api/sessions', {
+        method: 'POST',
+        body: { casino, game, buyin, cashout, playedDate, notes, photoUrl: uploadedPhotoUrl, shareToGroupIds: checkedIds }
+      });
+      sessions.unshift(session);
+    }
 
-    sessions.unshift(session);
     document.getElementById('formPanel').classList.remove('open');
     clearForm();
     render();
@@ -836,7 +905,7 @@ document.getElementById('saveSession').addEventListener('click', async () => {
     errEl.textContent = e.message;
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Save Ticket';
+    saveBtn.textContent = editingSessionId ? 'Save Changes' : 'Save Ticket';
   }
 });
 
