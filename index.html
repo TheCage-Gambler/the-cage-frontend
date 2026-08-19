@@ -352,6 +352,7 @@
       <button id="closeFeedModal">Close</button>
     </div>
     <button id="leaveGroupBtn" class="admin-reset-btn" style="margin-bottom:14px;">Leave Group</button>
+    <button id="copyInviteBtn" class="admin-reset-btn" style="margin-bottom:14px;margin-left:8px;">Copy Invite Link</button>
     <div id="feedLeaderboard"></div>
     <div id="membersPanel"></div>
     <div class="feed-sort">
@@ -398,6 +399,28 @@ let pendingPhotoFile = null;
 let editingSessionId = null;
 let removePhotoFlag = false;
 
+const urlParams = new URLSearchParams(location.search);
+let pendingJoinCode = urlParams.get('join');
+if (pendingJoinCode) pendingJoinCode = pendingJoinCode.toUpperCase();
+
+async function attemptAutoJoin() {
+  if (!pendingJoinCode) return;
+  const code = pendingJoinCode;
+  pendingJoinCode = null;
+  history.replaceState({}, '', location.pathname); // clean the URL so a refresh doesn't retry
+
+  if (myGroups.some(g => g.code === code)) return; // already in it
+
+  try {
+    const group = await api('/api/groups/join', { method: 'POST', body: { code } });
+    myGroups.push(group);
+    render();
+    alert(`You joined ${group.name}! Check the Groups tab to see the brag board.`);
+  } catch (e) {
+    alert("Couldn't join that group automatically: " + e.message);
+  }
+}
+
 // ---------- api helper ----------
 
 async function api(path, { method = 'GET', body, isForm = false } = {}) {
@@ -438,8 +461,12 @@ async function boot() {
     showApp();
     await loadEverything();
     await checkAdmin();
+    await attemptAutoJoin();
   } else {
     showAuth();
+    if (pendingJoinCode) {
+      document.getElementById('heroSub').textContent = "You've been invited to a shared group — log in or sign up and you'll join it automatically.";
+    }
   }
 }
 
@@ -596,6 +623,8 @@ document.getElementById('authSubmit').addEventListener('click', async () => {
 
     showApp();
     await loadEverything();
+    await checkAdmin();
+    await attemptAutoJoin();
   } catch (e) {
     errEl.textContent = e.message;
   }
@@ -1012,10 +1041,12 @@ function renderGroups() {
 let currentFeedData = [];
 let currentLeaderboard = [];
 let currentFeedGroupId = null;
+let currentFeedGroupCode = null;
 let currentFeedIsOwner = false;
 
 async function openFeed(groupId, name, code) {
   currentFeedGroupId = groupId;
+  currentFeedGroupCode = code;
   const group = myGroups.find(g => g.id === groupId);
   currentFeedIsOwner = group && group.owner_id === currentUser.id;
   document.getElementById('leaveGroupBtn').textContent = currentFeedIsOwner ? 'Delete Group' : 'Leave Group';
@@ -1038,6 +1069,16 @@ async function openFeed(groupId, name, code) {
   document.getElementById('feedModal').classList.add('open');
 }
 window.openFeed = openFeed;
+
+document.getElementById('copyInviteBtn').addEventListener('click', async () => {
+  const link = `${location.origin}${location.pathname}?join=${currentFeedGroupCode}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    alert('Invite link copied! Paste it into a text or email — they\'ll join automatically after logging in or signing up.');
+  } catch (e) {
+    prompt('Copy this link:', link);
+  }
+});
 
 document.getElementById('leaveGroupBtn').addEventListener('click', async () => {
   if (currentFeedIsOwner) {
