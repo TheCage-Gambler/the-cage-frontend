@@ -253,7 +253,8 @@
     </div>
     <div class="field">
       <label>Machine / Game</label>
-      <input type="text" id="fGame" placeholder="e.g. Dragon Link, Buffalo Gold">
+      <input type="text" id="fGame" list="gameList" placeholder="e.g. Dragon Link, Buffalo Gold">
+      <datalist id="gameList"></datalist>
     </div>
     <div class="row-2">
       <div class="field">
@@ -688,6 +689,7 @@ function render() {
   renderStats();
   renderList();
   renderCasinoList();
+  renderGameList();
   renderShareCheckboxes();
   renderGroups();
 }
@@ -715,6 +717,22 @@ function renderStats() {
 function renderCasinoList() {
   const dl = document.getElementById('casinoList');
   const names = [...new Set(sessions.map(s => s.casino))];
+  dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
+const POPULAR_SLOT_TITLES = [
+  'Dragon Link', 'Buffalo Gold', 'Buffalo Grand', 'Buffalo Diamond', 'Lightning Link',
+  'Wheel of Fortune', 'Wheel of Fortune High Roller', 'Wonder 4', 'Lock It Link',
+  'Quick Hit', 'Money Ball', 'Green Machine', 'Green Machine Bingo', 'Ultimate Fire Link',
+  'Top Dollar', 'Planet Moolah', 'MONOPOLY', 'Rainbow Riches', 'Da Vinci Diamonds',
+  'Cleopatra', '88 Fortunes', 'Huff N\' Puff', 'Prosperity Link', 'Fu Dai Lian Lian',
+  'High Stakes', 'Blazing 7\'s', 'Ultimate X', 'Video Poker', '4 Card Keno', 'Keno'
+];
+
+function renderGameList() {
+  const dl = document.getElementById('gameList');
+  const usedNames = sessions.map(s => s.game).filter(Boolean);
+  const names = [...new Set([...usedNames, ...POPULAR_SLOT_TITLES])];
   dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
