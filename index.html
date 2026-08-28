@@ -279,7 +279,11 @@
       <input type="file" id="photoFile" accept="image/*">
       <img id="photoPreview" class="photo-preview">
       <button type="button" class="link-btn" id="removePhotoBtn" style="display:none;">Remove photo</button>
-      <div id="photoMetaNote" class="loading-note" style="display:none;"></div>
+      <div id="photoDateNote" class="loading-note" style="display:none;"></div>
+      <div class="field" id="photoLocationField" style="display:none;">
+        <label>Location from photo (edit if GPS was off)</label>
+        <input type="text" id="fPhotoLocation" placeholder="e.g. Circa Resort & Casino, Las Vegas">
+      </div>
       <button type="button" class="link-btn" id="useLocationBtn" style="display:none;">Use as casino name</button>
     </div>
     <div class="field" id="shareGroupsField" style="display:none;">
@@ -812,7 +816,9 @@ function openEditForm(sessionId) {
 
   const preview = document.getElementById('photoPreview');
   const removeBtn = document.getElementById('removePhotoBtn');
-  document.getElementById('photoMetaNote').style.display = 'none';
+  document.getElementById('photoDateNote').style.display = 'none';
+  document.getElementById('photoLocationField').style.display = 'none';
+  document.getElementById('fPhotoLocation').value = '';
   document.getElementById('useLocationBtn').style.display = 'none';
   if (s.photo_url) {
     preview.src = s.photo_url;
@@ -854,7 +860,9 @@ function clearForm() {
   editingSessionId = null;
   document.getElementById('photoPreview').style.display = 'none';
   document.getElementById('removePhotoBtn').style.display = 'none';
-  document.getElementById('photoMetaNote').style.display = 'none';
+  document.getElementById('photoDateNote').style.display = 'none';
+  document.getElementById('photoLocationField').style.display = 'none';
+  document.getElementById('fPhotoLocation').value = '';
   document.getElementById('useLocationBtn').style.display = 'none';
   document.getElementById('photoFile').value = '';
   document.getElementById('formPanel').querySelector('h3').textContent = 'New Session';
@@ -875,53 +883,52 @@ document.getElementById('photoFile').addEventListener('change', async (e) => {
   preview.style.display = 'block';
   document.getElementById('removePhotoBtn').style.display = 'none';
 
-  const metaNote = document.getElementById('photoMetaNote');
+  const dateNote = document.getElementById('photoDateNote');
+  const locationField = document.getElementById('photoLocationField');
+  const locationInput = document.getElementById('fPhotoLocation');
   const useLocBtn = document.getElementById('useLocationBtn');
-  metaNote.style.display = 'block';
-  metaNote.textContent = 'Reading photo details…';
+  dateNote.style.display = 'none';
+  locationField.style.display = 'none';
+  locationInput.value = '';
   useLocBtn.style.display = 'none';
 
   try {
     const exif = await exifr.parse(file, { gps: true, tiff: true, exif: true });
-    const noteParts = [];
 
     if (exif && exif.DateTimeOriginal) {
       const d = new Date(exif.DateTimeOriginal);
       if (!isNaN(d.getTime())) {
         document.getElementById('fDate').value = d.toISOString().slice(0, 10);
-        noteParts.push('📅 Taken ' + d.toLocaleDateString());
+        dateNote.textContent = '📅 Taken ' + d.toLocaleDateString();
+        dateNote.style.display = 'block';
       }
     }
 
     if (exif && typeof exif.latitude === 'number' && typeof exif.longitude === 'number') {
-      noteParts.push('📍 Looking up location…');
-      metaNote.textContent = noteParts.join(' · ');
+      locationField.style.display = 'block';
+      locationInput.value = 'Looking up location…';
+      locationInput.disabled = true;
       try {
         const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${exif.latitude}&lon=${exif.longitude}`);
         const geo = await resp.json();
-        const nameGuess = geo.name || (geo.display_name ? geo.display_name.split(',')[0] : null);
-        noteParts[noteParts.length - 1] = geo.display_name ? '📍 ' + geo.display_name : `📍 ${exif.latitude.toFixed(4)}, ${exif.longitude.toFixed(4)}`;
-        if (nameGuess) {
-          useLocBtn.style.display = 'inline-block';
-          useLocBtn.dataset.name = nameGuess;
-        }
+        locationInput.value = geo.display_name || `${exif.latitude.toFixed(5)}, ${exif.longitude.toFixed(5)}`;
       } catch (geoErr) {
-        noteParts[noteParts.length - 1] = `📍 ${exif.latitude.toFixed(4)}, ${exif.longitude.toFixed(4)}`;
+        locationInput.value = `${exif.latitude.toFixed(5)}, ${exif.longitude.toFixed(5)}`;
       }
+      locationInput.disabled = false;
+      useLocBtn.style.display = 'inline-block';
     }
-
-    metaNote.textContent = noteParts.length ? noteParts.join(' · ') : '';
-    metaNote.style.display = noteParts.length ? 'block' : 'none';
   } catch (err) {
-    metaNote.style.display = 'none';
+    // no EXIF data found — that's fine, just skip the date/location helpers
   }
 });
 
 document.getElementById('useLocationBtn').addEventListener('click', () => {
-  const name = document.getElementById('useLocationBtn').dataset.name;
+  const locationValue = document.getElementById('fPhotoLocation').value.trim();
+  if (!locationValue) return;
   const casinoField = document.getElementById('fCasino');
-  if (casinoField.value.trim() && !confirm(`Replace "${casinoField.value}" with "${name}"?`)) return;
-  casinoField.value = name;
+  if (casinoField.value.trim() && !confirm(`Replace "${casinoField.value}" with "${locationValue}"?`)) return;
+  casinoField.value = locationValue;
 });
 
 function renderShareCheckboxes() {
