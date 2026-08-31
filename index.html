@@ -404,6 +404,7 @@ let currentUser = null;
 let sessions = [];
 let myGroups = [];
 let pendingPhotoFile = null;
+let pendingPhotoGPS = null;
 let editingSessionId = null;
 let removePhotoFlag = false;
 
@@ -714,6 +715,56 @@ function renderStats() {
   `;
 }
 
+const LOCATION_MEMORY_KEY = 'cage_location_memory';
+const LOCATION_MATCH_RADIUS_METERS = 250;
+
+function getLocationMemory() {
+  try {
+    const raw = localStorage.getItem(LOCATION_MEMORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocationMemory(memory) {
+  try {
+    localStorage.setItem(LOCATION_MEMORY_KEY, JSON.stringify(memory));
+  } catch (e) { /* ignore */ }
+}
+
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function findNearbyMemory(lat, lon) {
+  const memory = getLocationMemory();
+  let closest = null;
+  let closestDist = Infinity;
+  memory.forEach(entry => {
+    const d = distanceMeters(lat, lon, entry.lat, entry.lon);
+    if (d <= LOCATION_MATCH_RADIUS_METERS && d < closestDist) {
+      closest = entry;
+      closestDist = d;
+    }
+  });
+  return closest;
+}
+
+function rememberLocation(lat, lon, name) {
+  if (!name) return;
+  let memory = getLocationMemory();
+  memory = memory.filter(entry => distanceMeters(lat, lon, entry.lat, entry.lon) > LOCATION_MATCH_RADIUS_METERS);
+  memory.push({ lat, lon, name });
+  if (memory.length > 100) memory = memory.slice(-100); // keep it from growing forever
+  saveLocationMemory(memory);
+}
+
 function renderCasinoList() {
   const dl = document.getElementById('casinoList');
   const names = [...new Set(sessions.map(s => s.casino))];
@@ -821,6 +872,7 @@ function openEditForm(sessionId) {
   if (!s) return;
   editingSessionId = sessionId;
   pendingPhotoFile = null;
+  pendingPhotoGPS = null;
   removePhotoFlag = false;
 
   document.getElementById('formPanel').querySelector('h3').textContent = 'Edit Session';
@@ -858,6 +910,7 @@ window.openEditForm = openEditForm;
 document.getElementById('removePhotoBtn').addEventListener('click', () => {
   removePhotoFlag = true;
   pendingPhotoFile = null;
+  pendingPhotoGPS = null;
   document.getElementById('photoPreview').style.display = 'none';
   document.getElementById('photoPreview').src = '';
   document.getElementById('removePhotoBtn').style.display = 'none';
@@ -874,6 +927,7 @@ function clearForm() {
   document.getElementById('fNotes').value = '';
   document.getElementById('saveError').textContent = '';
   pendingPhotoFile = null;
+  pendingPhotoGPS = null;
   removePhotoFlag = false;
   editingSessionId = null;
   document.getElementById('photoPreview').style.display = 'none';
@@ -923,7 +977,18 @@ document.getElementById('photoFile').addEventListener('change', async (e) => {
     }
 
     if (exif && typeof exif.latitude === 'number' && typeof exif.longitude === 'number') {
+      pendingPhotoGPS = { lat: exif.latitude, lon: exif.longitude };
       locationField.style.display = 'block';
+
+      const remembered = findNearbyMemory(exif.latitude, exif.longitude);
+      if (remembered) {
+        locationInput.value = remembered.name;
+        useLocBtn.style.display = 'inline-block';
+        const casinoField = document.getElementById('fCasino');
+        if (!casinoField.value.trim()) casinoField.value = remembered.name;
+        return;
+      }
+
       locationInput.value = 'Looking up location…';
       locationInput.disabled = true;
       try {
@@ -1005,6 +1070,10 @@ document.getElementById('saveSession').addEventListener('click', async () => {
         body: { casino, game, buyin, cashout, playedDate, notes, photoUrl: uploadedPhotoUrl, shareToGroupIds: checkedIds }
       });
       sessions.unshift(session);
+    }
+
+    if (pendingPhotoGPS) {
+      rememberLocation(pendingPhotoGPS.lat, pendingPhotoGPS.lon, casino);
     }
 
     document.getElementById('formPanel').classList.remove('open');
