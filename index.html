@@ -212,6 +212,7 @@
   <div class="tabs" id="mainTabs" style="display:none;">
     <button class="tab-btn active" data-tab="ledger">My Ledger</button>
     <button class="tab-btn" data-tab="groups">Groups</button>
+    <button class="tab-btn" data-tab="trends">Trends</button>
     <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display:none;">Admin</button>
   </div>
 </header>
@@ -341,6 +342,23 @@
   </div>
 
   <div id="groupsList" style="margin-top:16px;"></div>
+</section>
+
+<section id="tab-trends" style="display:none;">
+  <div class="cap-note" style="border-color:var(--muted);color:var(--muted);">
+    Slot outcomes are random — a machine or casino showing up here reflects what's been <em>logged</em> by users who opted in, not a prediction of future wins. Past results don't guarantee future ones.
+  </div>
+
+  <div class="form-panel open" style="margin-top:16px;">
+    <h3>Your Data</h3>
+    <label class="group-check-row" style="font-size:14px;">
+      <input type="checkbox" id="trendsOptInCheckbox">
+      Include my sessions anonymously in app-wide trends
+    </label>
+    <div class="sub" style="margin-top:8px;">Your name is never shown — only aggregate totals across everyone who opts in.</div>
+  </div>
+
+  <div id="trendsContent"></div>
 </section>
 
 <section id="tab-admin" style="display:none;">
@@ -477,6 +495,66 @@ async function boot() {
       document.getElementById('heroSub').textContent = "You've been invited to a shared group — log in or sign up and you'll join it automatically.";
     }
   }
+}
+
+document.getElementById('trendsOptInCheckbox').addEventListener('change', async (e) => {
+  try {
+    await api('/api/me/trends-opt-in', { method: 'PATCH', body: { optIn: e.target.checked } });
+    currentUser.share_trends = e.target.checked;
+    localStorage.setItem('auth_user', JSON.stringify(currentUser));
+  } catch (err) {
+    e.target.checked = !e.target.checked; // revert on failure
+    alert('Could not update that setting: ' + err.message);
+  }
+});
+
+let trendsLoaded = false;
+
+async function loadTrends() {
+  document.getElementById('trendsOptInCheckbox').checked = !!currentUser.share_trends;
+  const container = document.getElementById('trendsContent');
+  container.innerHTML = '<div class="loading-note">Loading trends…</div>';
+  try {
+    const data = await api('/api/trends');
+    renderTrends(data);
+  } catch (e) {
+    container.innerHTML = `<div class="empty"><div class="marquee">Couldn't load trends</div><div>${escapeHtml(e.message)}</div></div>`;
+  }
+}
+
+function renderTrends(data) {
+  const container = document.getElementById('trendsContent');
+  const hasCasinos = data.byCasino && data.byCasino.length > 0;
+  const hasGames = data.byGame && data.byGame.length > 0;
+
+  if (!hasCasinos && !hasGames) {
+    container.innerHTML = `<div class="empty"><div class="marquee">Not enough data yet</div><div>Trends need at least ${data.minSampleSize} opted-in sessions for a casino or machine before they show up here.</div></div>`;
+    return;
+  }
+
+  const renderRows = (rows, labelKey) => rows.map((r, i) => `
+    <div class="lb-row">
+      <span class="lb-rank">#${i + 1}</span>
+      <span class="lb-name">${escapeHtml(r[labelKey])}</span>
+      <span class="lb-count">${r.session_count} logged</span>
+      <span class="lb-net mono ${Number(r.total_net) >= 0 ? 'win-color' : 'loss-color'}">${money(r.total_net)}</span>
+    </div>
+  `).join('');
+
+  container.innerHTML = `
+    ${hasCasinos ? `
+      <div class="leaderboard">
+        <h4>Most Logged Casinos</h4>
+        ${renderRows(data.byCasino, 'casino')}
+      </div>
+    ` : ''}
+    ${hasGames ? `
+      <div class="leaderboard">
+        <h4>Most Logged Machines</h4>
+        ${renderRows(data.byGame, 'game')}
+      </div>
+    ` : ''}
+  `;
 }
 
 async function checkAdmin() {
@@ -1115,7 +1193,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const tab = btn.dataset.tab;
     document.getElementById('tab-ledger').style.display = tab === 'ledger' ? 'block' : 'none';
     document.getElementById('tab-groups').style.display = tab === 'groups' ? 'block' : 'none';
+    document.getElementById('tab-trends').style.display = tab === 'trends' ? 'block' : 'none';
     document.getElementById('tab-admin').style.display = tab === 'admin' ? 'block' : 'none';
+    if (tab === 'trends') loadTrends();
   });
 });
 
