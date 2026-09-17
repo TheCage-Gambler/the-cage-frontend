@@ -843,9 +843,41 @@ function rememberLocation(lat, lon, name) {
   saveLocationMemory(memory);
 }
 
+// Organized by region so more states/cities can be added later without
+// restructuring — just add a new key with its own array. Only Las Vegas is
+// populated for now, per the current request.
+const CASINO_DIRECTORY = {
+  'Las Vegas, NV': [
+    // Strip
+    'Aria', 'Bellagio', 'Caesars Palace', 'Casino Royale', 'Circus Circus',
+    'The Cosmopolitan', 'The Cromwell', 'Encore', 'Excalibur', 'Flamingo',
+    'Fontainebleau', "Harrah's", 'Horseshoe Las Vegas', 'The LINQ', 'Luxor',
+    'Mandalay Bay', 'MGM Grand', 'New York-New York', 'The Palazzo',
+    'Paris Las Vegas', 'Park MGM', 'Planet Hollywood', 'Resorts World',
+    'SAHARA', 'The Strat', 'Treasure Island', 'The Venetian', 'Wynn Las Vegas',
+    // Downtown
+    "Binion's", 'California Hotel and Casino', 'Circa', 'The D',
+    'Downtown Grand', 'El Cortez', 'Four Queens', 'Fremont', 'Golden Gate',
+    'Golden Nugget', 'Main Street Station', 'Plaza',
+    // Locals / off-Strip
+    "Arizona Charlie's Boulder", "Arizona Charlie's Decatur", 'Boulder Station',
+    'Cannery', 'Durango', 'Ellis Island', 'Gold Coast', 'Green Valley Ranch',
+    "Jerry's Nugget", 'M Resort', 'Orleans', 'Palace Station', 'Palms',
+    'Red Rock Resort', 'Rio', "Sam's Town", 'Santa Fe Station', 'Silver Sevens',
+    'Silverton', 'South Point', 'Suncoast', 'Sunset Station', 'Tuscany',
+    'Virgin Hotels Las Vegas', 'Westgate'
+  ]
+  // Future: 'Los Angeles, CA': [...], 'Miami, FL': [...], etc.
+};
+
+function allSeededCasinoNames() {
+  return Object.values(CASINO_DIRECTORY).flat();
+}
+
 function renderCasinoList() {
   const dl = document.getElementById('casinoList');
-  const names = [...new Set(sessions.map(s => s.casino))];
+  const usedNames = sessions.map(s => s.casino).filter(Boolean);
+  const names = [...new Set([...usedNames, ...allSeededCasinoNames()])];
   dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
