@@ -461,6 +461,12 @@ async function api(path, { method = 'GET', body, isForm = false } = {}) {
     body: isForm ? body : (body ? JSON.stringify(body) : undefined)
   });
 
+  const refreshed = res.headers.get('X-Refresh-Token');
+  if (refreshed && refreshed !== authToken) {
+    authToken = refreshed;
+    try { localStorage.setItem('auth_token', authToken); } catch (e) { /* ignore */ }
+  }
+
   let data = null;
   try { data = await res.json(); } catch (e) { /* no body */ }
 
