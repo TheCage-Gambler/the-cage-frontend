@@ -610,6 +610,10 @@ function renderGameDetailList(sessions) {
         <span class="brag-net mono ${Number(s.net) >= 0 ? 'win-color' : 'loss-color'}">${money(s.net)}</span>
       </div>
       <div class="brag-meta">${escapeHtml(s.casino)}</div>
+      <div class="ticket-figures" style="margin-top:6px;">
+        <span>In <b>${money(s.buyin)}</b></span>
+        <span>Out <b>${money(s.cashout)}</b></span>
+      </div>
     </div>
   `).join('');
 }
