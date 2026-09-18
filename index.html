@@ -389,6 +389,18 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="gameDetailModal">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="marquee" id="gameDetailTitle" style="font-size:16px;"></div>
+      <button id="closeGameDetailModal">Close</button>
+    </div>
+    <div class="balance-strip" id="gameDetailStats" style="margin-top:0;"></div>
+    <canvas id="gameDetailChart" width="600" height="220" style="width:100%;margin:16px 0;display:block;"></canvas>
+    <div id="gameDetailList"></div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="cardModal">
   <div class="modal-panel" style="text-align:center;">
     <canvas id="shareCanvas" width="600" height="750" style="width:100%;max-width:320px;border-radius:8px;margin:0 auto 16px;display:block;"></canvas>
@@ -528,6 +540,80 @@ async function loadTrends() {
   }
 }
 
+async function openGameDetail(game) {
+  document.getElementById('gameDetailTitle').textContent = game;
+  document.getElementById('gameDetailStats').innerHTML = '<div class="loading-note">Loading…</div>';
+  document.getElementById('gameDetailList').innerHTML = '';
+  document.getElementById('gameDetailModal').classList.add('open');
+
+  try {
+    const data = await api(`/api/trends/game/${encodeURIComponent(game)}`);
+    renderGameDetailStats(data);
+    drawGameChart(data.sessions);
+    renderGameDetailList(data.sessions);
+  } catch (e) {
+    document.getElementById('gameDetailStats').innerHTML = `<div class="empty"><div class="marquee">Couldn't load this</div><div>${escapeHtml(e.message)}</div></div>`;
+  }
+}
+window.openGameDetail = openGameDetail;
+
+document.getElementById('closeGameDetailModal').addEventListener('click', () => {
+  document.getElementById('gameDetailModal').classList.remove('open');
+});
+
+function renderGameDetailStats(data) {
+  document.getElementById('gameDetailStats').innerHTML = `
+    <div class="stat"><div class="label">Sessions</div><div class="value mono">${data.sessionCount}</div></div>
+    <div class="stat"><div class="label">Win Rate</div><div class="value mono">${Math.round(data.winRate * 100)}%</div></div>
+    <div class="stat"><div class="label">Net</div><div class="value mono ${data.totalNet >= 0 ? 'win-color' : 'loss-color'}">${money(data.totalNet)}</div></div>
+  `;
+}
+
+function drawGameChart(sessions) {
+  const canvas = document.getElementById('gameDetailChart');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const maxAbs = Math.max(1, ...sessions.map(s => Math.abs(Number(s.net))));
+  const midY = canvas.height / 2;
+  const usableHalf = canvas.height / 2 - 20;
+  const barWidth = Math.min(30, (canvas.width - 20) / sessions.length - 6);
+  const totalWidth = sessions.length * (barWidth + 6);
+  const startX = (canvas.width - totalWidth) / 2;
+
+  ctx.strokeStyle = '#C4E0C9';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(10, midY);
+  ctx.lineTo(canvas.width - 10, midY);
+  ctx.stroke();
+
+  sessions.forEach((s, i) => {
+    const net = Number(s.net);
+    const barHeight = (Math.abs(net) / maxAbs) * usableHalf;
+    const x = startX + i * (barWidth + 6);
+    ctx.fillStyle = net >= 0 ? '#1B6B45' : '#C41E56';
+    if (net >= 0) {
+      ctx.fillRect(x, midY - barHeight, barWidth, barHeight);
+    } else {
+      ctx.fillRect(x, midY, barWidth, barHeight);
+    }
+  });
+}
+
+function renderGameDetailList(sessions) {
+  const sorted = [...sessions].sort((a, b) => new Date(b.played_date) - new Date(a.played_date));
+  document.getElementById('gameDetailList').innerHTML = sorted.map(s => `
+    <div class="brag-item">
+      <div class="brag-top">
+        <span class="brag-meta">${fmtDate(s.played_date)}</span>
+        <span class="brag-net mono ${Number(s.net) >= 0 ? 'win-color' : 'loss-color'}">${money(s.net)}</span>
+      </div>
+      <div class="brag-meta">${escapeHtml(s.casino)}</div>
+    </div>
+  `).join('');
+}
+
 function renderTrends(data) {
   const container = document.getElementById('trendsContent');
   const hasCasinos = data.byCasino && data.byCasino.length > 0;
@@ -538,8 +624,8 @@ function renderTrends(data) {
     return;
   }
 
-  const renderRows = (rows, labelKey) => rows.map((r, i) => `
-    <div class="lb-row">
+  const renderRows = (rows, labelKey, clickable) => rows.map((r, i) => `
+    <div class="lb-row"${clickable ? ` style="cursor:pointer;" onclick="openGameDetail(this.dataset.game)" data-game="${escapeHtml(r[labelKey])}"` : ''}>
       <span class="lb-rank">#${i + 1}</span>
       <span class="lb-name">${escapeHtml(r[labelKey])}</span>
       <span class="lb-count">${r.session_count} logged</span>
@@ -551,13 +637,14 @@ function renderTrends(data) {
     ${hasCasinos ? `
       <div class="leaderboard">
         <h4>Most Logged Casinos</h4>
-        ${renderRows(data.byCasino, 'casino')}
+        ${renderRows(data.byCasino, 'casino', false)}
       </div>
     ` : ''}
     ${hasGames ? `
       <div class="leaderboard">
         <h4>Most Logged Machines</h4>
-        ${renderRows(data.byGame, 'game')}
+        <div class="sub" style="margin-bottom:8px;">Tap a machine for session history</div>
+        ${renderRows(data.byGame, 'game', true)}
       </div>
     ` : ''}
   `;
