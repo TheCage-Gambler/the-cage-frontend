@@ -84,7 +84,7 @@
   }
   .form-panel.open { display: block; }
   .form-panel h3 { margin: 0 0 14px; font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; }
-  .field { margin-bottom: 12px; }
+  .field { margin-bottom: 12px; position: relative; }
   .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.06em; }
   .field input, .field textarea {
     width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 4px;
@@ -98,6 +98,30 @@
     background-size: 16px;
     padding-right: 38px;
   }
+  .suggest-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    margin-top: 2px;
+    max-height: 180px;
+    overflow-y: auto;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  .suggest-list.open { display: block; }
+  .suggest-item {
+    padding: 10px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .suggest-item:last-child { border-bottom: none; }
+  .suggest-item:active { background: var(--panel-2); }
   .field textarea { resize: vertical; min-height: 50px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .form-actions { display: flex; gap: 10px; margin-top: 16px; }
@@ -256,13 +280,15 @@
     <h3>New Session</h3>
     <div class="field">
       <label>Casino</label>
-      <input type="text" id="fCasino" list="casinoList" placeholder="e.g. Circa, Cannery, South Point">
+      <input type="text" id="fCasino" list="casinoList" placeholder="e.g. Circa, Cannery, South Point" autocomplete="off">
       <datalist id="casinoList"></datalist>
+      <div class="suggest-list" id="casinoSuggestions"></div>
     </div>
     <div class="field">
       <label>Machine / Game</label>
-      <input type="text" id="fGame" list="gameList" placeholder="e.g. Dragon Link, Buffalo Gold">
+      <input type="text" id="fGame" list="gameList" placeholder="e.g. Dragon Link, Buffalo Gold" autocomplete="off">
       <datalist id="gameList"></datalist>
+      <div class="suggest-list" id="gameSuggestions"></div>
     </div>
     <div class="row-2">
       <div class="field">
@@ -978,11 +1004,14 @@ function allSeededCasinoNames() {
   return Object.values(CASINO_DIRECTORY).flat();
 }
 
+function getCasinoOptions() {
+  const usedNames = sessions.map(s => s.casino).filter(Boolean);
+  return [...new Set([...usedNames, ...allSeededCasinoNames()])];
+}
+
 function renderCasinoList() {
   const dl = document.getElementById('casinoList');
-  const usedNames = sessions.map(s => s.casino).filter(Boolean);
-  const names = [...new Set([...usedNames, ...allSeededCasinoNames()])];
-  dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+  dl.innerHTML = getCasinoOptions().map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
 const POPULAR_SLOT_TITLES = [
@@ -994,12 +1023,55 @@ const POPULAR_SLOT_TITLES = [
   'High Stakes', 'Blazing 7\'s', 'Ultimate X', 'Video Poker', '4 Card Keno', 'Keno'
 ];
 
+function getGameOptions() {
+  const usedNames = sessions.map(s => s.game).filter(Boolean);
+  return [...new Set([...usedNames, ...POPULAR_SLOT_TITLES])];
+}
+
 function renderGameList() {
   const dl = document.getElementById('gameList');
-  const usedNames = sessions.map(s => s.game).filter(Boolean);
-  const names = [...new Set([...usedNames, ...POPULAR_SLOT_TITLES])];
-  dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+  dl.innerHTML = getGameOptions().map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
+
+// Custom suggestion dropdown — datalist's native UI doesn't render on iOS
+// Safari/Chrome at all, so this is the reliable cross-device replacement.
+// It also filters as you type, which datalist doesn't reliably do either.
+function wireAutocomplete(inputId, listId, getOptions) {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+
+  function showMatches() {
+    const query = input.value.trim().toLowerCase();
+    const options = getOptions();
+    const matches = query
+      ? options.filter(o => o.toLowerCase().includes(query))
+      : options;
+    if (matches.length === 0) {
+      list.classList.remove('open');
+      list.innerHTML = '';
+      return;
+    }
+    list.innerHTML = matches.slice(0, 8).map(o => `<div class="suggest-item">${escapeHtml(o)}</div>`).join('');
+    list.classList.add('open');
+  }
+
+  input.addEventListener('input', showMatches);
+  input.addEventListener('focus', showMatches);
+  input.addEventListener('blur', () => {
+    setTimeout(() => list.classList.remove('open'), 150); // delay so the click below still registers
+  });
+  list.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus so blur doesn't fire first
+  list.addEventListener('click', (e) => {
+    const item = e.target.closest('.suggest-item');
+    if (!item) return;
+    input.value = item.textContent;
+    list.classList.remove('open');
+    input.dispatchEvent(new Event('change'));
+  });
+}
+
+wireAutocomplete('fCasino', 'casinoSuggestions', getCasinoOptions);
+wireAutocomplete('fGame', 'gameSuggestions', getGameOptions);
 
 function renderList() {
   const container = document.getElementById('sessionsContainer');
